@@ -7,7 +7,7 @@
 #' @param order1 is the order of the time varying AR part, parameter p
 #' @param order2 is the order of the time varying conditional variance, parameter q
 #' @param knot is the number of equidistant knots for B-spline
-#' @param norder is the order of B-splines
+#' @param norder is the order of B-splines = degree of the piecewise polynomial + 1 (thus norder=4 (default choice) for cubic splines)
 #' @param P is the order in tvAR() for initialization
 #' @param Total_sample is the total number of iterations of MCMC
 #' @param burn is the number of burn-in MCMC samples
@@ -16,7 +16,7 @@
 #' functions (sig2lp, Mfn, Afn and Bfn)\cr
 
 #Assume order1>0 if order2>0
-fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder = 4, P=10, Total_itr = 10000, burn = 5000){
+fit.tvGARCHMCMCcomboNpred <- function(data, order1 = 5, order2 = 0, M = 1, knot = 6, norder = 4, P=10, Total_itr = 10000, burn = 5000){
   library(fda)
   library(pracma)
   set.seed(1)
@@ -187,19 +187,20 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     }
     return(list(up = up, arc = arc))  # reject
   }
-  
+  datau <- data[-c((length(data)-M):length(data))]
   order <- max(order1, order2)
   time <- (1:length(data)) / length(data)
   
-  J       <- knot + norder - 1 
-  timesp  <- bsplineS(time,  breaks=seq(0,1,1/knot), norder = norder)
-  timespI <- timesp
-  
+  J        <- knot + norder - 1 
+  timesp   <- bsplineS(time,  breaks=seq(0,1,1/knot), norder = norder)
+  timespIf <- timesp
+  timespI  <- timespIf[-c((length(data)-M):length(data)), ]
   if(order>0){timespI <- timesp[-(1:order), ]}
   #timesp  <- matrix(rep(timespI, order), nrow = nrow(timespI))
   
-  timespIder <- bsplineS(time,  breaks=seq(0,1,1/knot), norder = norder, nderiv = 1)
-  timespIder <- timespIder[-(1:order), ]
+  timespIderf <- bsplineS(time,  breaks=seq(0,1,1/knot), norder = norder, nderiv = 1)
+  timespIderf <- timespIderf[-(1:order), ]
+  timespIderf <- timespIderf[-c((length(data)-M):length(data)), ]
   
   Umu <- function(x){
     mut     <- array(timespI %*% array(exp(x)))
@@ -211,8 +212,8 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     
     if(order2>0){
       temp <- sigma2lat
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order+i-1):i])
         temp    <- c(temp, vart[i])
       } 
@@ -232,8 +233,8 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     
     if(order2>0){
       temp <- sigma2lat
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order+i-1):i])
         temp    <- c(temp, vart[i])
       } 
@@ -246,7 +247,7 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
   }
   
   UA <- function(x){
-    At <- matrix(0, length(data) - order, order1)
+    At <- matrix(0, length(datau) - order, order1)
     for(j in 1:order1){
       At[, j] <- timespI %*% x[(j-1)*J+1:J]*M[j+1]#exp(x[(j-1)*J+1:J]) /  sum(exp(x))
     }
@@ -258,8 +259,8 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     
     if(order2>0){
       temp <- sigma2lat
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order+i-1):i])
         temp    <- c(temp, vart[i])
       } 
@@ -270,11 +271,11 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
   }
   
   grad_UA <- function(x, deltaBc, Mc, temp){
-    At <- matrix(0, length(data) - order, order1)
+    At <- matrix(0, length(datau) - order, order1)
     for(j in 1:order1){
       At[, j] <- timespI %*% x[(j-1)*J+1:J]*M[j+1]#exp(x[(j-1)*J+1:J]) /  sum(exp(x))
     }
-    Bt <- matrix(0, length(data) - order, order2)
+    Bt <- matrix(0, length(datau) - order, order2)
     for(j in 1:order2){
       Bt[, j] <- timespI %*% deltaBc[(j-1)*J+1:J]*Mc[order1+j+1]#exp(x[(j-1)*J+1:J]) /  sum(exp(x))
     }
@@ -286,8 +287,8 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     
     if(order2>0){
       #temp <- sigma2lat
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order+i-1):i])
         temp    <- c(temp, vart[i])
       } 
@@ -306,7 +307,7 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
   }
   
   UB <- function(x){
-    Bt <- matrix(0, length(data) - order, order2)
+    Bt <- matrix(0, length(datau) - order, order2)
     for(j in 1:order2){
       Bt[, j] <- timespI %*% x[(j-1)*J+1:J]*M[order1+j+1]#exp(x[(j-1)*J+1:J]) /  sum(exp(x))
     }
@@ -318,8 +319,8 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     
     if(order2>0){
       temp <- sigma2lat
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order+i-1):i])
         temp    <- c(temp, vart[i])
       } 
@@ -330,11 +331,11 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
   }
   
   grad_UB <- function(x, deltaAa, Mm, tempsig){
-    At <- matrix(0, length(data) - order, order1)
+    At <- matrix(0, length(datau) - order, order1)
     for(j in 1:order1){
       At[, j] <- timespI %*% deltaAa[(j-1)*J+1:J]*Mm[j+1] #/  sum(exp(x))
     }
-    Bt <- matrix(0, length(data) - order, order2)
+    Bt <- matrix(0, length(datau) - order, order2)
     for(j in 1:order2){
       Bt[, j] <- timespI %*% x[(j-1)*J+1:J]*Mm[order1+j+1]#exp(x[(j-1)*J+1:J]) /  sum(exp(x))
     }
@@ -348,8 +349,8 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     
     if(order2>0){
       temp <- tempsig
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order2+i-1):i])
         sigma2m[i, ] <- temp[(order2+i-1):i]
         temp    <- c(temp, vart[i])
@@ -372,19 +373,19 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     ret = Inf
     if(!is.nan(x)){
     if(x>=0){
-    At <- matrix(0, length(data) - order, order1)
+    At <- matrix(0, length(datau) - order, order1)
     for(j in 1:order1){
       At[, j] <- timespI %*% deltaAa[(j-1)*J+1:J]*Mm[j+1] #/  sum(exp(x))
     }
-    Bt <- matrix(0, length(data) - order, order2)
+    Bt <- matrix(0, length(datau) - order, order2)
     for(j in 1:order2){
       Bt[, j] <- timespI %*% deltaBb[(j-1)*J+1:J]*Mm[order1+j+1]#exp(x[(j-1)*J+1:J]) /  sum(exp(x))
     }
     vartcan <- length(Y)
     temp <- x
     if(order2>0){
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vartcan[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order2+i-1):i])
         temp    <- c(temp, vart[i])
         #sigma2m[i, ] <- temp[(order2+i-1):i]
@@ -403,7 +404,7 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
   }
   
   UM <- function(x){
-    At <- matrix(0, length(data) - order, order1)
+    At <- matrix(0, length(datau) - order, order1)
     for(j in 1:order1){
       At[, j] <- timespI %*% deltaA[(j-1)*J+1:J]*exp(x[j+1]) /  sum(exp(x))
     }
@@ -416,12 +417,12 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     
     if(order2>0){
       temp <- sigma2lat
-      Bt <- matrix(0, length(data) - order, order2)
+      Bt <- matrix(0, length(datau) - order, order2)
       for(j in 1:order2){
         Bt[, j] <- timespI %*% deltaB[(j-1)*J+1:J]*exp(x[order1+j+1]) /  sum(exp(x))
       }
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order+i-1):i])
         temp    <- c(temp, vart[i])
       } 
@@ -432,8 +433,8 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
   }
   
   grad_UM <- function(x, deltaAa, deltaBb, tempsig){
-    At <- matrix(0, length(data) - order, order1)
-    Atder <- matrix(0, length(data) - order, order1)
+    At <- matrix(0, length(datau) - order, order1)
+    Atder <- matrix(0, length(datau) - order, order1)
     
     for(j in 1:order1){
       At[, j] <- timespI %*% deltaAa[(j-1)*J+1:J]*exp(x[j+1]) /  sum(exp(x))#exp(x[(j-1)*J+1:J]) /  sum(exp(x))
@@ -448,14 +449,14 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     if(order2>0){
       sigma2m <- Bt
       temp <- tempsig#sigma2lat
-      Bt <- matrix(0, length(data) - order, order2)
-      Btder <- matrix(0, length(data) - order, order2)
+      Bt <- matrix(0, length(datau) - order, order2)
+      Btder <- matrix(0, length(datau) - order, order2)
       for(j in 1:order2){
         Bt[, j] <- timespI %*% deltaBb[(j-1)*J+1:J]*exp(x[order1+j+1]) /  sum(exp(x))#exp(x[(j-1)*J+1:J]) /  sum(exp(x))
         Btder[, j] <- timespI %*% deltaBb[(j-1)*J+1:J]
       }
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order+i-1):i])
         temp    <- c(temp, vart[i])
         sigma2m[i, ] <- temp[(order+i-1):i]
@@ -481,7 +482,7 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     deltaBc <- x[1:length(deltaB) + order2 + length(deltaA)]
     deltaMc <- x[1:length(deltaM) + order2 + length(deltaB) + length(deltaA)]
     
-    At <- matrix(0, length(data) - order, order1)
+    At <- matrix(0, length(datau) - order, order1)
     for(j in 1:order1){
       At[, j] <- timespI %*% deltaAc[(j-1)*J+1:J]*exp(deltaMc[j+1]) /  sum(exp(deltaMc))
     }
@@ -494,12 +495,12 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     
     if(order2>0){
       #temp <- sigma2lat
-      Bt <- matrix(0, length(data) - order, order2)
+      Bt <- matrix(0, length(datau) - order, order2)
       for(j in 1:order2){
         Bt[, j] <- timespI %*% deltaBc[(j-1)*J+1:J]*exp(deltaMc[order1+j+1]) /  sum(exp(deltaMc))
       }
-      vart <- rep(0, length(data)-order) 
-      for(i in 1:(length(data)-order)){
+      vart <- rep(0, length(datau)-order) 
+      for(i in 1:(length(datau)-order)){
         vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order+i-1):i])
         temp    <- c(temp, vart[i])
       } 
@@ -597,8 +598,9 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     return(list(up = up, arc = arc))  # reject
   }
   
-  Y <- data^2
-  if(order>0){Y <- (data[-(1:order)])^2}
+  Yf <- data^2
+  Y  <- datau^2
+  if(order>0){Yf <- data^2;Y <- (datau[-(1:order)])^2}
   X <- NULL
   if(order1 > 0){
     for(j in 1:order1){
@@ -606,11 +608,13 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
       X <- cbind(X, (array(data[ind]))^2)
     } 
   }
+  Xf <- X
+  X <- X[-c((length(data)-M):length(data)), ]
   At <- 0
   #est=summary(garch(data, order = c(1,1), coef = NULL, itmax = 1000,eps = NULL, grad = c("analytical","numerical"),series = NULL, trace = F))$coef
   
   #P = 10
-  fit <- tvAR(data^2, p = P) 
+  fit <- tvAR(datau^2, p = P) 
   #design <- ginv(t(timesp[-1:15]) %*% timesp[-1:15]) %*% t( timesp[-1:15])
   
   p1 <- fit$coefficients[, 1]
@@ -655,18 +659,19 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
   deltaB[(deltaB>1)] <- 1
   
   if(order1>0){
-    At <- matrix(0, length(data) - order, order1)
+    At <- matrix(0, length(datau) - order, order1)
     for(j in 1:order1){
       At[, j] <- timespI %*% deltaA[(j-1)*J+1:J]*M[j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
     }
   }
-  
+ # At <- At[-c((length(data)-M):length(data)), ]
   if(order2>0){
-    Bt <- matrix(0, length(data) - order, order2)
+    Bt <- matrix(0, length(datau) - order, order2)
     for(j in 1:order2){
       Bt[, j] <- timespI %*% deltaB[(j-1)*J+1:J]*M[order1+j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
     }
   }
+ # Bt <- Bt[-c((length(data)-M):length(data)), ]
   sigma2lat <- NULL
   if(order2>0)
   {
@@ -675,8 +680,8 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
   delta <- c(sigma2lat, deltaA, deltaB, deltaM)
   temp <- sigma2lat
   if(order2>0){
-    vart <- rep(0, length(data)-order) 
-    for(i in 1:(length(data)-order)){
+    vart <- rep(0, length(datau)-order) 
+    for(i in 1:(length(datau)-order)){
       vart[i] <- mut[i] + sum(At[i, ]*X[i, ])+ sum(Bt[i, ]*temp[(order+i-1):i])
       temp    <- c(temp, vart[i])
     } 
@@ -704,6 +709,7 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
   siglatls <- list()
   pb <- txtProgressBar(min = itr, max = Total_itr, style = 3)
   Pred <- rep(0, Total_itr)
+  lPred <- Pred
   while(itr < Total_itr){
     itr <- itr + 1
     temp    <- HMC(Umu, grad_Umu, sdmu, L = 30, deltamu, armu)
@@ -750,12 +756,12 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
         
         At <- matrix(0, length(data) - order, order1)
         for(j in 1:order1){
-          At[, j] <- timespI %*% deltaA[(j-1)*J+1:J]*M[j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
+          At[, j] <- timespIf %*% deltaA[(j-1)*J+1:J]*M[j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
         }
         
         Bt <- matrix(0, length(data) - order, order2)
         for(j in 1:order2){
-          Bt[, j] <- timespI %*% deltaB[(j-1)*J+1:J]*M[order1+j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
+          Bt[, j] <- timespIf %*% deltaB[(j-1)*J+1:J]*M[order1+j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
         }
         comp2 = At * X
         if(order1==0){comp2 = rep(0, length(mut))}
@@ -774,7 +780,8 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
       }
     }
     
-    print(Pred[itr] <- mean((data^2-temp)^2))
+    print(Pred[itr] <- mean((data[c((length(data)-M):length(data))]^2-temp[c((length(data)-M):length(data))])^2))
+    lPred[itr] <- mean(dnorm(data[c((length(data)-M):length(data))], sd = sqrt(temp[c((length(data)-M):length(data))]), log = T))
     siglatls[[itr]] <- sigma2lat
     
     if(itr %% 100 == 0){
@@ -814,7 +821,7 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     if(order1>0){
       Atder <- matrix(0, length(data) - order, order1)
       for(j in 1:order1){
-        Atder[, j] <- timespIder %*% deltaA[(j-1)*J+1:J]*M[j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
+        Atder[, j] <- timespIderf %*% deltaA[(j-1)*J+1:J]*M[j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
       }
       Als[[itr]] <- At 
       Alsder[[itr]] <- Atder
@@ -823,7 +830,7 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     if(order2>0){
       Btder <- matrix(0, length(data) - order, order2)
       for(j in 1:order2){
-        Btder[, j] <- timespIder %*% deltaB[(j-1)*J+1:J]*M[order1+j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
+        Btder[, j] <- timespIderf %*% deltaB[(j-1)*J+1:J]*M[order1+j+1]# exp(deltaA[(j-1)*J+1:J]) /  sum(exp(deltaA))
       }
       Bls[[itr]] <- Bt 
       Blsder[[itr]] <- Btder
@@ -842,8 +849,7 @@ fit.tvGARCHMCMCcomboN <- function(data, order1 = 5, order2 = 0, knot = 6, norder
     #print(sigma2lat)
   }
   close(pb)
-  if(order1>0){out <- list(sig0 = siglatls[(burn+1):Total_itr], pred = Pred[(burn+1):Total_itr], Afn = Als[(burn+1):Total_itr], Mfn = Mls[(burn+1):Total_itr], Afnder = Alsder[(burn+1):Total_itr], Mfnder = Mlsder[(burn+1):Total_itr])}
-  if(order2>0){out <- list(sig0 = siglatls[(burn+1):Total_itr], pred = Pred[(burn+1):Total_itr], Afn = Als[(burn+1):Total_itr], Bfn = Bls[(burn+1):Total_itr], Mfn = Mls[(burn+1):Total_itr], Afnder = Alsder[(burn+1):Total_itr], Bfnder = Blsder[(burn+1):Total_itr], Mfnder = Mlsder[(burn+1):Total_itr])}
-  if(order==0){out <- list(Mfn = Mls[(burn+1):Total_itr], Mfnder = Mlsder[(burn+1):Total_itr])}
+  if(order1>0){out <- list(sig0 = siglatls[(burn+1):Total_itr], pred = Pred[(burn+1):Total_itr], predl = Predl[(burn+1):Total_itr], Afn = Als[(burn+1):Total_itr], Mfn = Mls[(burn+1):Total_itr])}
+  if(order2>0){out <- list(sig0 = siglatls[(burn+1):Total_itr], pred = Pred[(burn+1):Total_itr], predl = Predl[(burn+1):Total_itr], Afn = Als[(burn+1):Total_itr], Bfn = Bls[(burn+1):Total_itr], Mfn = Mls[(burn+1):Total_itr])}
   return(out)
 }
