@@ -7,7 +7,7 @@
 #' @param order1 is the order of the time varying AR part, parameter p
 #' @param order2 is the order of the time varying conditional variance, parameter q
 #' @param knot is the number of equidistant knots for B-spline
-#' @param norder is the order of B-splines
+#' @param is the order of B-splines = degree of the piecewise polynomial + 1 (thus norder=4 (default choice) for cubic splines)
 #' @param P is the order in tvAR() for initialization
 #' @param Total_sample is the total number of iterations of MCMC
 #' @param burn is the number of burn-in MCMC samples
