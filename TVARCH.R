@@ -6,7 +6,7 @@
 #' @param data is the time-series of count-valued data
 #' @param order is the order of the time varying AR part, parameter p
 #' @param knot is the number of equidistant knots for B-spline
-#' @param norder is the order of B-splines
+#' @param norder is the order of B-splines = degree of the piecewise polynomial + 1 (thus norder=4 (default choice) for cubic splines)
 #' @param Total_sample is the total number of iterations of MCMC
 #' @param burn is the number of burn-in MCMC samples
 
